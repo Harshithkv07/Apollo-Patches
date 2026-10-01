@@ -1,0 +1,143 @@
+---
+import { getCollection } from 'astro:content';
+import Base from '../layouts/Base.astro';
+import Section from '../components/Section.astro';
+import { inkOn } from '../lib/format';
+
+const missions = (await getCollection('missions')).sort((a, b) => a.data.number - b.data.number);
+---
+
+<Base title="About" description="How this design guide to the Apollo crew emblems was made, and where its material comes from.">
+	<header class="wrap page-head">
+		<p class="label">About</p>
+		<h1 class="display">A patch is a <em>brief</em>, stitched.</h1>
+		<hr class="rule" />
+	</header>
+
+	<Section id="why" n="01" title="Why">
+		<div class="prose">
+			<p>
+				Apollo crew emblems were small, argued-over pieces of design. People debated whether an eagle's talons looked
+				too warlike and whether a number should be spelled out as a word. Most people have seen these patches, but
+				few have looked closely at them.
+			</p>
+			<p>
+				This site takes each one apart the same way: the story behind it, what each symbol stands for, the colors
+				it's printed in and the geometry underneath.
+			</p>
+		</div>
+	</Section>
+
+	<Section id="method" n="02" title="Method">
+		<div class="prose">
+			<p>
+				<strong>Artwork.</strong> Each emblem starts from NASA's official scan in the NASA Image and Video Library. A
+				script fits a circle to the patch's rim, crops it cleanly and removes the paper around it.
+			</p>
+			<p>
+				<strong>Colors</strong> are sampled from flat areas of the scan and averaged, so they're approximations of the
+				original art, not official specifications.
+			</p>
+			<p>
+				<strong>Construction</strong> measurements come from the same scan. Ring widths are read by walking inward
+				from the rim along several angles; other features are measured by hand. Everything is expressed as a fraction
+				of the patch diameter, <em>D</em>.
+			</p>
+			<p>
+				<strong>Symbol drawings</strong> are traced automatically from the scan as placeholders and will be redrawn
+				by hand.
+			</p>
+			<p>
+				<strong>Facts</strong> come from NASA sources wherever possible and are listed at the foot of each page.
+				Claims that rest on other sources are noted there too.
+			</p>
+		</div>
+	</Section>
+
+	<Section id="palette" n="03" title="Program palette">
+		<p class="prose">Every sampled color from every documented emblem, in flight order.</p>
+		<div class="palette" role="list">
+			{
+				missions.map((m) => (
+					<div class="palette-row" role="listitem">
+						<a class="label" href={`/${m.id}`}>
+							{m.data.mission}
+						</a>
+						<div class="strip">
+							{m.data.colors.map((c) => (
+								<span style={`--c: ${c.hex}; --on: ${inkOn(c.hex)}`} title={`${c.name} ${c.hex.toUpperCase()}`}>
+									<span class="visually-hidden">
+										{c.name} {c.hex}
+									</span>
+								</span>
+							))}
+						</div>
+					</div>
+				))
+			}
+		</div>
+	</Section>
+
+	<Section id="credits" n="04" title="Credits">
+		<div class="prose">
+			<p>
+				All patch artwork is by NASA and its artists, reproduced here for education and information. NASA's caption
+				for the Apollo 17 emblem, for example, allows its reproduction in news, information and education media. This
+				site is not affiliated with or endorsed by NASA and does not use the NASA insignia.
+			</p>
+		</div>
+	</Section>
+</Base>
+
+<style>
+	.page-head {
+		padding-top: var(--space-xl);
+	}
+
+	.page-head h1 {
+		margin: var(--space-s) 0 var(--space-m);
+		font-size: var(--step-5);
+	}
+
+	.page-head em {
+		font-style: italic;
+	}
+
+	.prose strong {
+		font-weight: 600;
+	}
+
+	.palette {
+		display: grid;
+		gap: var(--space-s);
+		margin-top: var(--space-m);
+	}
+
+	.palette-row {
+		display: grid;
+		grid-template-columns: 7rem 1fr;
+		align-items: center;
+		gap: var(--space-s);
+	}
+
+	.palette-row a {
+		text-decoration: none;
+	}
+
+	.strip {
+		display: flex;
+		height: 44px;
+		overflow: hidden;
+		border-radius: var(--radius);
+	}
+
+	.strip > span {
+		flex: 1;
+		background: var(--c);
+		transition: flex-grow 0.35s var(--ease);
+	}
+
+	.strip > span:hover {
+		flex-grow: 2.4;
+	}
+</style>

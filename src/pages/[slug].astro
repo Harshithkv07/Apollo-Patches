@@ -1,0 +1,412 @@
+---
+import { Image } from 'astro:assets';
+import { getCollection, render } from 'astro:content';
+import Base from '../layouts/Base.astro';
+import Section from '../components/Section.astro';
+import Iconography from '../components/Iconography.astro';
+import ColorSwatches from '../components/ColorSwatches.astro';
+import ConstructionSheet from '../components/ConstructionSheet.astro';
+import { formatDate, isoDate, shapeLabel } from '../lib/format';
+
+export async function getStaticPaths() {
+	const missions = (await getCollection('missions')).sort((a, b) => a.data.number - b.data.number);
+	return missions.map((entry, i) => ({
+		params: { slug: entry.id },
+		props: { entry, prev: missions[i - 1], next: missions[i + 1] },
+	}));
+}
+
+const { entry, prev, next } = Astro.props;
+const { Content } = await render(entry);
+const d = entry.data;
+---
+
+<Base title={d.mission} description={`${d.mission} crew emblem: story, iconography, colors and construction.`}>
+	<article>
+		<header class="hero wrap">
+			<a class="back label" href="/">← All missions</a>
+			<div class="hero-grid">
+				<div class="hero-text">
+					<p class="label">Apollo program · {d.tagline}</p>
+					<h1 class="display title">
+						<span class="title-word">Apollo</span>
+						<span class="title-num">{d.number}</span>
+					</h1>
+				</div>
+				<Image
+					class="hero-patch"
+					src={d.patch}
+					alt={d.patchAlt}
+					width={480}
+					widths={[200, 320, 480]}
+					sizes="(min-width: 960px) 240px, 30vw"
+					loading="eager"
+					style={`view-transition-name: patch-${entry.id}`}
+				/>
+			</div>
+			<hr class="rule" />
+			<div class="meta mono">
+				<span>
+					{d.callsigns.csm ? <>CSM <em>{d.callsigns.csm}</em></> : d.launch ? 'No spacecraft names' : 'Did not fly'}
+					{d.callsigns.lm && <> · LM <em>{d.callsigns.lm}</em></>}
+				</span>
+				{
+					d.launch ? (
+						<span>
+							Launched <time datetime={isoDate(d.launch)}>{formatDate(d.launch)}</time>
+						</span>
+					) : (
+						d.event && <time datetime={isoDate(d.event.date)}>{formatDate(d.event.date)}</time>
+					)
+				}
+			</div>
+		</header>
+
+		<Section id="story" n="01" title="Story">
+			<div class="story-grid">
+				<div class="prose"><Content /></div>
+				<aside class="flight-card" aria-label="Flight card">
+					<dl>
+						{
+							d.launch && (
+								<div>
+									<dt class="label">Launch</dt>
+									<dd class="mono">
+										<time datetime={isoDate(d.launch)}>{formatDate(d.launch)}</time>
+									</dd>
+								</div>
+							)
+						}
+						{
+							d.splashdown && (
+								<div>
+									<dt class="label">Splashdown</dt>
+									<dd class="mono">
+										<time datetime={isoDate(d.splashdown)}>{formatDate(d.splashdown)}</time>
+									</dd>
+								</div>
+							)
+						}
+						{
+							d.event && (
+								<div class="wide">
+									<dt class="label">{formatDate(d.event.date)}</dt>
+									<dd>{d.event.label}</dd>
+								</div>
+							)
+						}
+						{
+							d.callsigns.csm && (
+								<div>
+									<dt class="label">Command module</dt>
+									<dd class="callsign">{d.callsigns.csm}</dd>
+								</div>
+							)
+						}
+						{
+							d.callsigns.lm && (
+								<div>
+									<dt class="label">Lunar module</dt>
+									<dd class="callsign">{d.callsigns.lm}</dd>
+								</div>
+							)
+						}
+					</dl>
+					<h3 class="label crew-head">Crew</h3>
+					<ol class="crew" role="list">
+						{
+							d.crew.map((c) => (
+								<li>
+									<span class="crew-name">{c.name}</span>
+									<span class="mono crew-role">{c.role}</span>
+									{c.note && <span class="crew-note">{c.note}</span>}
+								</li>
+							))
+						}
+					</ol>
+					<h3 class="label crew-head">Emblem design</h3>
+					<ul class="designers" role="list">
+						{d.designers.length ? d.designers.map((name) => <li>{name}</li>) : <li class="uncredited">Not credited in NASA's caption</li>}
+					</ul>
+				</aside>
+			</div>
+		</Section>
+
+		<Section id="composition" n="02" title="Composition">
+			<p class="prose lede">{d.composition}</p>
+			<dl class="facts">
+				<div>
+					<dt class="label">Shape</dt>
+					<dd>{shapeLabel[d.shape]}</dd>
+				</div>
+				<div>
+					<dt class="label">Lettering</dt>
+					<dd>{d.lettering.map((l) => <span class="mono pill">{l}</span>)}</dd>
+				</div>
+				<div>
+					<dt class="label">Crew names</dt>
+					<dd>{d.namesOnPatch ? 'On the patch' : 'Left off'}</dd>
+				</div>
+			</dl>
+		</Section>
+
+		<Section id="iconography" n="03" title="Iconography">
+			<Iconography entry={entry} />
+		</Section>
+
+		<Section id="colors" n="04" title="Colors">
+			<ColorSwatches colors={d.colors} />
+		</Section>
+
+		<Section id="construction" n="05" title="Construction">
+			<ConstructionSheet entry={entry} />
+		</Section>
+
+		<nav class="pager wrap" aria-label="More missions">
+			{
+				prev ? (
+					<a class="pager-link" href={`/${prev.id}`} rel="prev">
+						<span class="label">← Previous</span>
+						<span class="display">{prev.data.mission}</span>
+					</a>
+				) : (
+					<span />
+				)
+			}
+			{
+				next && (
+					<a class="pager-link pager-next" href={`/${next.id}`} rel="next">
+						<span class="label">Next →</span>
+						<span class="display">{next.data.mission}</span>
+					</a>
+				)
+			}
+		</nav>
+
+		<Section id="sources" n="06" title="Sources">
+			<ol class="sources">
+				{
+					d.sources.map((s) => (
+						<li>
+							{s.url ? <a href={s.url}>{s.title}</a> : s.title}
+							<span class="source-pub"> · {s.publisher}</span>
+						</li>
+					))
+				}
+			</ol>
+			<p class="credit">
+				Patch artwork: NASA, image <a href={d.patchSource.url}>{d.patchSource.id}</a>.
+			</p>
+		</Section>
+	</article>
+</Base>
+
+<style>
+	.hero {
+		padding-top: var(--space-l);
+	}
+
+	.back {
+		display: inline-block;
+		margin-bottom: var(--space-l);
+		text-decoration: none;
+	}
+
+	.back:hover {
+		color: var(--ink);
+	}
+
+	.hero-grid {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) auto;
+		align-items: end;
+		gap: var(--space-m);
+		padding-bottom: var(--space-s);
+	}
+
+	.hero-text .label {
+		margin-bottom: var(--space-xs);
+	}
+
+	.title {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: baseline;
+		column-gap: 0.18em;
+		font-size: var(--step-5);
+	}
+
+	.title-num {
+		font-style: italic;
+	}
+
+	.hero-patch {
+		width: clamp(88px, 22vw, 240px);
+		height: auto;
+		filter: var(--patch-shadow);
+	}
+
+	.meta {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: space-between;
+		gap: var(--space-2xs) var(--space-m);
+		padding-top: var(--space-xs);
+		color: var(--ink-2);
+	}
+
+	.meta em,
+	.callsign {
+		font-family: var(--font-display);
+		font-size: 1.2em;
+		font-style: italic;
+		color: var(--ink);
+	}
+
+	.story-grid {
+		display: grid;
+		gap: var(--space-l);
+	}
+
+	.flight-card {
+		align-self: start;
+		padding: var(--space-m);
+		background: var(--panel);
+		border: 1px solid var(--hair);
+		border-radius: var(--radius);
+	}
+
+	.flight-card dl {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: var(--space-s);
+	}
+
+	.flight-card dd {
+		margin-top: 2px;
+	}
+
+	.flight-card .wide {
+		grid-column: 1 / -1;
+	}
+
+	.uncredited {
+		color: var(--ink-2);
+		font-style: italic;
+	}
+
+	.crew-head {
+		margin-top: var(--space-m);
+		padding-top: var(--space-s);
+		border-top: 1px solid var(--hair);
+	}
+
+	.crew,
+	.designers {
+		display: grid;
+		gap: var(--space-xs);
+		margin: var(--space-xs) 0 0;
+		padding: 0;
+		list-style: none;
+	}
+
+	.crew li {
+		display: grid;
+	}
+
+	.crew-name {
+		font-weight: 500;
+	}
+
+	.crew-role {
+		color: var(--ink-2);
+		font-size: var(--step--2);
+	}
+
+	.crew-note {
+		font-size: var(--step--1);
+		color: var(--signal-ink);
+	}
+
+	.designers {
+		font-size: var(--step--1);
+	}
+
+	@media (min-width: 1100px) {
+		.story-grid {
+			grid-template-columns: minmax(0, 1fr) 17rem;
+		}
+	}
+
+	.lede {
+		font-family: var(--font-display);
+		font-size: var(--step-2);
+		line-height: 1.3;
+	}
+
+	.facts {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--space-m) var(--space-xl);
+		margin-top: var(--space-l);
+	}
+
+	.facts dd {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--space-3xs);
+		margin-top: var(--space-3xs);
+	}
+
+	.pill {
+		padding: 1px 8px;
+		border: 1px solid var(--hair);
+		border-radius: 99px;
+		font-size: var(--step--2);
+	}
+
+	.pager {
+		display: flex;
+		justify-content: space-between;
+		gap: var(--space-m);
+		margin-top: var(--space-2xl);
+		padding-block: var(--space-m);
+		border-block: 1px solid var(--rule);
+	}
+
+	.pager-link {
+		display: grid;
+		gap: var(--space-3xs);
+		text-decoration: none;
+	}
+
+	.pager-link .display {
+		font-size: var(--step-3);
+		transition: color 0.2s;
+	}
+
+	.pager-link:hover .display {
+		color: var(--signal-ink);
+	}
+
+	.pager-next {
+		text-align: right;
+	}
+
+	.sources {
+		display: grid;
+		gap: var(--space-2xs);
+		padding-left: 1.4em;
+		font-size: var(--step--1);
+	}
+
+	.source-pub {
+		color: var(--ink-2);
+	}
+
+	.credit {
+		margin-top: var(--space-m);
+		font-size: var(--step--1);
+		color: var(--ink-2);
+	}
+</style>

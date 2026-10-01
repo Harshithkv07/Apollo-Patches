@@ -1,0 +1,161 @@
+---
+import { Image } from 'astro:assets';
+import type { CollectionEntry } from 'astro:content';
+import { formatDate, missionDate } from '../lib/format';
+
+interface Props {
+	missions: CollectionEntry<'missions'>[];
+}
+
+const { missions } = Astro.props;
+const month = new Intl.DateTimeFormat('en-GB', { month: 'short', timeZone: 'UTC' });
+
+// Flight order, not a true time scale: six flights fall between October 1968
+// and November 1969, and a proportional axis piles them on top of each other.
+// Each mission gets an equal slot, grouped under its year.
+const sorted = [...missions].sort((a, b) => missionDate(a.data).getTime() - missionDate(b.data).getTime());
+const years = new Map<number, typeof sorted>();
+for (const m of sorted) {
+	const y = missionDate(m.data).getUTCFullYear();
+	years.set(y, [...(years.get(y) ?? []), m]);
+}
+---
+
+<figure class="timeline">
+	<figcaption class="label">Flight order, 1967–1972</figcaption>
+	<div class="strip">
+		<ol class="years" role="list">
+			{
+				[...years].map(([year, items]) => (
+					<li class="year" style={`--n: ${items.length}`}>
+						<ol class="stops" role="list">
+							{items.map((m) => (
+								<li>
+									<a class:list={['stop', { 'did-not-fly': !m.data.launch }]} href={`/${m.id}`}>
+										<Image src={m.data.patch} alt="" width={112} widths={[56, 112]} sizes="56px" />
+										<span class="num display">{m.data.number}</span>
+										<span class="month mono" aria-hidden="true">
+											{month.format(missionDate(m.data))}
+										</span>
+										<span class="visually-hidden">
+											{m.data.mission},{' '}
+											{m.data.launch
+												? `launched ${formatDate(m.data.launch)}`
+												: `did not fly (${formatDate(missionDate(m.data))})`}
+										</span>
+									</a>
+								</li>
+							))}
+						</ol>
+						<span class="year-label mono">{year}</span>
+					</li>
+				))
+			}
+		</ol>
+	</div>
+</figure>
+
+<style>
+	.timeline {
+		display: grid;
+		gap: var(--space-s);
+	}
+
+	/* On narrow screens the strip scrolls sideways instead of squeezing. */
+	.strip {
+		overflow-x: auto;
+		scrollbar-width: thin;
+		padding-bottom: var(--space-2xs);
+	}
+
+	.years {
+		display: flex;
+		gap: var(--space-s);
+		min-width: calc(12 * 64px + 5 * var(--space-s));
+		margin: 0;
+	}
+
+	.year {
+		flex: var(--n) 1 0;
+		display: grid;
+		grid-template-rows: 1fr auto;
+	}
+
+	.stops {
+		display: flex;
+		justify-content: space-around;
+		margin: 0;
+	}
+
+	.stops li {
+		flex: 1;
+		display: grid;
+		justify-items: center;
+	}
+
+	.stop {
+		display: grid;
+		justify-items: center;
+		gap: 2px;
+		text-decoration: none;
+	}
+
+	/* Stem from the month down to the year's axis segment. */
+	.stop::after {
+		content: '';
+		width: 1px;
+		height: 12px;
+		margin-top: 4px;
+		background: var(--signal);
+	}
+
+	.did-not-fly::after {
+		background: var(--ink-3);
+	}
+
+	.stop :global(img) {
+		width: 56px;
+		height: 56px;
+		margin-bottom: 6px;
+		object-fit: contain;
+		filter: var(--patch-shadow);
+		transition: transform 0.3s var(--ease);
+	}
+
+	.stop:hover :global(img),
+	.stop:focus-visible :global(img) {
+		transform: translateY(-4px) scale(1.1);
+	}
+
+	.num {
+		font-size: var(--step-1);
+		line-height: 1;
+	}
+
+	.month {
+		font-size: var(--step--2);
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--ink-3);
+	}
+
+	.stop:hover .num {
+		color: var(--signal-ink);
+	}
+
+	/* Each year is its own segment of the axis, with the year beneath it. */
+	.year-label {
+		padding-top: var(--space-2xs);
+		border-top: 1px solid var(--ink);
+		font-size: var(--step--2);
+		color: var(--ink-2);
+		text-align: center;
+	}
+
+	@media (max-width: 600px) {
+		.stop :global(img) {
+			width: 44px;
+			height: 44px;
+		}
+	}
+</style>

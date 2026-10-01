@@ -1,0 +1,213 @@
+---
+// Dev-only helper: click around a symbol on the patch to build a hotspot
+// polygon, then paste the output into the mission's `hotspot:` field.
+// Not built in production (getStaticPaths returns nothing).
+import { Image } from 'astro:assets';
+import { getCollection } from 'astro:content';
+import Base from '../../layouts/Base.astro';
+import { hotspotPath } from '../../lib/geometry';
+
+export async function getStaticPaths() {
+	if (!import.meta.env.DEV) return [];
+	const missions = await getCollection('missions');
+	return missions.map((entry) => ({ params: { slug: entry.id }, props: { entry } }));
+}
+
+const { entry } = Astro.props;
+const symbols = entry.data.iconography.map((s) => ({ id: s.id, name: s.symbol, d: hotspotPath(s.hotspot) }));
+---
+
+<Base title={`Hotspots · ${entry.data.mission}`}>
+	<div class="wrap editor">
+		<header>
+			<p class="label">Dev tool · {entry.id}</p>
+			<h1 class="display">Hotspot editor</h1>
+			<p>
+				Click to add points. <kbd>Ctrl</kbd>+<kbd>Z</kbd> undoes. Existing hotspots are shown in grey; pick one to
+				highlight it.
+			</p>
+		</header>
+
+		<div class="layout">
+			<div class="stage" data-stage>
+				<Image src={entry.data.patch} alt="" widths={[1000]} sizes="720px" loading="eager" />
+				<svg viewBox="0 0 1000 1000" data-svg>
+					<g class="grid">
+						{
+							Array.from({ length: 9 }, (_, i) => (i + 1) * 100).map((v) => (
+								<>
+									<line x1={v} y1="0" x2={v} y2="1000" />
+									<line x1="0" y1={v} x2="1000" y2={v} />
+								</>
+							))
+						}
+					</g>
+					{symbols.map((s) => <path class="existing" data-id={s.id} d={s.d} />)}
+					<polygon class="draft" data-draft points=""></polygon>
+					<g data-dots></g>
+				</svg>
+			</div>
+
+			<aside class="panel">
+				<label class="label" for="pick">Highlight</label>
+				<select id="pick" data-pick>
+					<option value="">None</option>
+					{symbols.map((s) => <option value={s.id}>{s.name}</option>)}
+				</select>
+				<p class="label">Cursor</p>
+				<p class="mono" data-cursor>–</p>
+				<p class="label">Polygon</p>
+				<textarea class="mono" rows="8" readonly data-out></textarea>
+				<div class="buttons">
+					<button type="button" data-undo>Undo</button>
+					<button type="button" data-clear>Clear</button>
+					<button type="button" data-copy>Copy</button>
+				</div>
+			</aside>
+		</div>
+	</div>
+</Base>
+
+<script>
+	const svg = document.querySelector<SVGSVGElement>('[data-svg]')!;
+	const draft = document.querySelector<SVGPolygonElement>('[data-draft]')!;
+	const dots = document.querySelector<SVGGElement>('[data-dots]')!;
+	const out = document.querySelector<HTMLTextAreaElement>('[data-out]')!;
+	const cursor = document.querySelector<HTMLElement>('[data-cursor]')!;
+	const points: [number, number][] = [];
+
+	const toUnits = (e: MouseEvent): [number, number] => {
+		const r = svg.getBoundingClientRect();
+		return [Math.round(((e.clientX - r.left) / r.width) * 1000), Math.round(((e.clientY - r.top) / r.height) * 1000)];
+	};
+
+	const render = () => {
+		const s = points.map((p) => p.join(',')).join(' ');
+		draft.setAttribute('points', s);
+		dots.innerHTML = points.map(([x, y]) => `<circle cx="${x}" cy="${y}" r="6"></circle>`).join('');
+		out.value = points.length ? `polygon: ${s}` : '';
+	};
+
+	svg.addEventListener('click', (e) => {
+		points.push(toUnits(e));
+		render();
+	});
+	svg.addEventListener('mousemove', (e) => (cursor.textContent = toUnits(e).join(', ')));
+
+	document.querySelector('[data-undo]')!.addEventListener('click', () => (points.pop(), render()));
+	document.querySelector('[data-clear]')!.addEventListener('click', () => (points.splice(0), render()));
+	document.querySelector('[data-copy]')!.addEventListener('click', () => navigator.clipboard.writeText(out.value));
+	document.addEventListener('keydown', (e) => {
+		if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+			points.pop();
+			render();
+		}
+	});
+
+	document.querySelector<HTMLSelectElement>('[data-pick]')!.addEventListener('change', (e) => {
+		const id = (e.target as HTMLSelectElement).value;
+		svg.querySelectorAll('.existing').forEach((p) => p.classList.toggle('is-picked', (p as SVGElement).dataset.id === id));
+	});
+</script>
+
+<style>
+	.editor {
+		padding-top: var(--space-l);
+	}
+
+	.editor h1 {
+		font-size: var(--step-4);
+		margin: var(--space-2xs) 0;
+	}
+
+	.layout {
+		display: grid;
+		gap: var(--space-l);
+		margin-top: var(--space-l);
+	}
+
+	@media (min-width: 960px) {
+		.layout {
+			grid-template-columns: minmax(0, 720px) 1fr;
+		}
+	}
+
+	.stage {
+		position: relative;
+		aspect-ratio: 1;
+	}
+
+	.stage :global(img) {
+		width: 100%;
+		height: 100%;
+	}
+
+	.stage svg {
+		position: absolute;
+		inset: 0;
+		width: 100%;
+		height: 100%;
+		cursor: crosshair;
+	}
+
+	.grid line {
+		stroke: #f0f;
+		stroke-width: 1;
+		opacity: 0.35;
+	}
+
+	.existing {
+		fill: none;
+		stroke: #fff;
+		stroke-width: 2;
+		stroke-dasharray: 6 6;
+		opacity: 0.55;
+	}
+
+	.existing.is-picked {
+		stroke: #0ff;
+		stroke-width: 4;
+		opacity: 1;
+	}
+
+	.draft {
+		fill: rgb(229 70 27 / 0.25);
+		stroke: var(--signal);
+		stroke-width: 3;
+	}
+
+	[data-dots] :global(circle) {
+		fill: var(--signal);
+	}
+
+	.panel {
+		display: grid;
+		align-content: start;
+		gap: var(--space-2xs);
+	}
+
+	.panel textarea,
+	.panel select {
+		width: 100%;
+		padding: var(--space-2xs);
+		border: 1px solid var(--hair);
+		background: var(--paper-2);
+		color: var(--ink);
+		font: inherit;
+	}
+
+	.buttons {
+		display: flex;
+		gap: var(--space-2xs);
+	}
+
+	.buttons button {
+		padding: 4px 14px;
+		border: 1px solid var(--ink);
+		border-radius: 99px;
+		background: transparent;
+		color: var(--ink);
+		font: inherit;
+		cursor: pointer;
+	}
+</style>

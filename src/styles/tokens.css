@@ -1,0 +1,71 @@
+/* Design tokens. "Flight document" set against the night sky: near-black
+   space, pale ink, one signal color. The patches carry all the other color on
+   the page. The light "day side" theme is opt-in through the toggle. */
+
+:root {
+	color-scheme: dark;
+
+	--paper: #06070a;
+	--paper-2: #111319;
+	--paper-3: #1a1d24;
+	--ink: #ece7dc;
+	--ink-2: #aaa396;
+	--ink-3: #7a7569;
+	--hair: #262930;
+	--rule: #ece7dc;
+	--signal: #ff6a3d; /* International Orange, used sparingly */
+	--signal-ink: #ff8a64; /* signal as text on the background (AA) */
+	--dim: rgb(0 0 0 / 0.72);
+	--patch-shadow: drop-shadow(0 1px 1px rgb(0 0 0 / 0.5)) drop-shadow(0 8px 12px rgb(0 0 0 / 0.55));
+	/* Panels sit over the starfield, so they let a little of it through. */
+	--panel: rgb(17 19 25 / 0.82);
+	--stars: 1;
+
+	--font-display: 'Instrument Serif', 'Iowan Old Style', 'Times New Roman', serif;
+	--font-body: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+	--font-mono: 'IBM Plex Mono', ui-monospace, 'Cascadia Mono', monospace;
+
+	/* fluid type scale (360px → 1280px) */
+	--step--2: clamp(0.69rem, 0.67rem + 0.08vw, 0.74rem);
+	--step--1: clamp(0.8rem, 0.77rem + 0.13vw, 0.88rem);
+	--step-0: clamp(0.95rem, 0.91rem + 0.2vw, 1.06rem);
+	--step-1: clamp(1.15rem, 1.07rem + 0.35vw, 1.35rem);
+	--step-2: clamp(1.4rem, 1.25rem + 0.65vw, 1.8rem);
+	--step-3: clamp(1.8rem, 1.5rem + 1.3vw, 2.7rem);
+	--step-4: clamp(2.6rem, 1.9rem + 3vw, 4.6rem);
+	--step-5: clamp(3.6rem, 2.3rem + 5.8vw, 8.2rem);
+
+	--space-3xs: 0.25rem;
+	--space-2xs: 0.5rem;
+	--space-xs: 0.75rem;
+	--space-s: 1rem;
+	--space-m: 1.5rem;
+	--space-l: 2.25rem;
+	--space-xl: clamp(2.75rem, 2rem + 3vw, 4.5rem);
+	--space-2xl: clamp(4rem, 3rem + 5vw, 7.5rem);
+
+	--gutter: clamp(16px, 4vw, 48px);
+	--max: 1240px;
+	--measure: 62ch;
+	--radius: 2px;
+	--ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+/* Day side: warm paper, black ink, no stars. */
+:root[data-theme='light'] {
+	color-scheme: light;
+	--paper: #f3efe6;
+	--paper-2: #e9e4d8;
+	--paper-3: #dfd9ca;
+	--ink: #17160f;
+	--ink-2: #57524a;
+	--ink-3: #857f71;
+	--hair: #d3ccbb;
+	--rule: #17160f;
+	--signal: #e5461b;
+	--signal-ink: #b5340f;
+	--dim: rgb(14 14 16 / 0.66);
+	--patch-shadow: drop-shadow(0 1px 1px rgb(40 30 10 / 0.2)) drop-shadow(0 6px 7px rgb(40 30 10 / 0.2));
+	--panel: var(--paper-2);
+	--stars: 0;
+}

@@ -1,0 +1,174 @@
+---
+import '../styles/global.css';
+import ThemeToggle from '../components/ThemeToggle.astro';
+import { site } from '../site';
+
+interface Props {
+	title?: string;
+	description?: string;
+}
+
+const { title, description = site.description } = Astro.props;
+const pageTitle = title ? `${title} · ${site.name}` : site.name;
+const path = Astro.url.pathname.replace(/\/$/, '') || '/';
+const nav = [
+	{ href: '/', label: 'Missions' },
+	{ href: '/glossary', label: 'Glossary' },
+	{ href: '/about', label: 'About' },
+];
+---
+
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>{pageTitle}</title>
+		<meta name="description" content={description} />
+		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+		<link rel="preconnect" href="https://fonts.googleapis.com" />
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+		<link
+			rel="stylesheet"
+			href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600&display=swap"
+		/>
+		<script is:inline>
+			// Before first paint: mark JS as available and apply a saved theme.
+			// The night side is the default; the day side is opt-in.
+			document.documentElement.classList.add('js');
+			try {
+				if (localStorage.getItem('apollo-theme') === 'light') document.documentElement.dataset.theme = 'light';
+			} catch {}
+		</script>
+	</head>
+	<body>
+		<a class="skip label" href="#main">Skip to content</a>
+		<header class="site-head wrap">
+			<a class="wordmark" href="/">
+				<span class="display">Apollo</span>
+				<span class="label">Patches</span>
+			</a>
+			<nav aria-label="Site">
+				<ul role="list">
+					{
+						nav.map((item) => (
+							<li>
+								<a href={item.href} aria-current={path === item.href ? 'page' : undefined}>
+									{item.label}
+								</a>
+							</li>
+						))
+					}
+				</ul>
+				<ThemeToggle />
+			</nav>
+		</header>
+
+		<main id="main">
+			<slot />
+		</main>
+
+		<footer class="site-foot wrap">
+			<hr class="rule" />
+			<div class="foot-grid">
+				<p>
+					Patch artwork: <a href="https://images.nasa.gov/">NASA</a>, reproduced for education and information.{' '}
+					<strong>Not affiliated with or endorsed by NASA.</strong>
+				</p>
+				<p>Made by {site.author}.</p>
+			</div>
+		</footer>
+	</body>
+</html>
+
+<style>
+	.skip {
+		position: absolute;
+		left: var(--gutter);
+		top: -100px;
+		padding: var(--space-2xs) var(--space-xs);
+		background: var(--ink);
+		color: var(--paper);
+		z-index: 10;
+	}
+
+	.skip:focus {
+		top: var(--space-2xs);
+	}
+
+	.site-head {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: var(--space-s);
+		padding-block: var(--space-s);
+	}
+
+	.wordmark {
+		display: inline-flex;
+		align-items: baseline;
+		gap: 0.45em;
+		text-decoration: none;
+	}
+
+	.wordmark .display {
+		font-size: var(--step-2);
+		line-height: 1;
+	}
+
+	.wordmark .label {
+		color: var(--ink-2);
+	}
+
+	nav {
+		display: flex;
+		align-items: center;
+		gap: clamp(var(--space-xs), 2vw, var(--space-m));
+	}
+
+	nav ul {
+		display: flex;
+		gap: clamp(var(--space-xs), 2vw, var(--space-m));
+		padding: 0;
+		margin: 0;
+		list-style: none;
+	}
+
+	nav a {
+		font-size: var(--step--1);
+		text-decoration: none;
+		color: var(--ink-2);
+	}
+
+	nav a:hover,
+	nav a[aria-current='page'] {
+		color: var(--ink);
+		text-decoration: underline;
+		text-decoration-thickness: 1px;
+	}
+
+	@media (max-width: 420px) {
+		nav ul li:first-child {
+			display: none;
+		}
+	}
+
+	.site-foot {
+		margin-top: var(--space-2xl);
+		padding-bottom: var(--space-xl);
+	}
+
+	.foot-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(min(100%, 30ch), 1fr));
+		gap: var(--space-s) var(--space-l);
+		padding-top: var(--space-s);
+		font-size: var(--step--1);
+		color: var(--ink-2);
+	}
+
+	.foot-grid strong {
+		font-weight: 500;
+		color: var(--ink);
+	}
+</style>

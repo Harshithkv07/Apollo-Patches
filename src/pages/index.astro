@@ -1,0 +1,288 @@
+---
+import { Image } from 'astro:assets';
+import { getCollection } from 'astro:content';
+import Base from '../layouts/Base.astro';
+import Timeline from '../components/Timeline.astro';
+import { formatMonth, missionDate, signatureHue } from '../lib/format';
+import { program } from '../lib/program';
+
+const missions = (await getCollection('missions')).sort((a, b) => a.data.number - b.data.number);
+const byNumber = new Map(missions.map((m) => [m.data.number, m]));
+
+// Every emblem in the program, documented or not, so the set reads as a whole.
+// Documented emblems always come first; the rest wait at the end.
+const cards = program
+	.map((p) => {
+		const entry = byNumber.get(p.number);
+		return {
+			...p,
+			entry,
+			hue: entry ? signatureHue(entry.data.colors) : 999,
+			// Missions without spacecraft names sort after the named ones.
+			callsign: entry?.data.callsigns.csm ?? '~',
+		};
+	})
+	.sort((a, b) => Number(!a.entry) - Number(!b.entry) || a.number - b.number);
+---
+
+<Base>
+	<header class="masthead wrap">
+		<p class="label">A design guide to the crew emblems of Project Apollo</p>
+		<h1 class="display">Apollo <em>Patches</em></h1>
+		<hr class="rule" />
+		<div class="intro-row">
+			<p class="intro">
+				Each crewed Apollo mission had its own emblem, often designed by the astronauts themselves. Here each one is
+				taken apart: its story, its symbols, its colors and the geometry underneath.
+			</p>
+			<p class="mono count">
+				{missions.length === program.length ? `${program.length} emblems · 1967–1972` : `${missions.length} of ${program.length} documented`}
+			</p>
+		</div>
+	</header>
+
+	<section class="wrap block" aria-label="Timeline">
+		<Timeline missions={missions} />
+	</section>
+
+	<section class="wrap block" aria-labelledby="emblems-title">
+		<div class="grid-head">
+			<h2 class="visually-hidden" id="emblems-title">Emblems</h2>
+			<div class="sort" role="group" aria-label="Sort emblems">
+				<span class="label">Sort by</span>
+				<button type="button" data-sort="number" aria-pressed="true">Flight</button>
+				<button type="button" data-sort="hue" aria-pressed="false">Hue</button>
+				<button type="button" data-sort="callsign" aria-pressed="false">Call sign</button>
+			</div>
+		</div>
+
+		<ul class="grid" role="list" data-grid>
+			{
+				cards.map((c) =>
+					c.entry ? (
+						<li
+							class="card"
+							data-number={c.number}
+							data-hue={c.hue}
+							data-callsign={c.callsign}
+							style={`view-transition-name: card-${c.number}`}
+						>
+							<a href={`/${c.entry.id}`}>
+								<div class="card-art">
+									<Image
+										src={c.entry.data.patch}
+										alt=""
+										width={520}
+										widths={[240, 360, 520]}
+										sizes="(min-width: 960px) 22vw, (min-width: 560px) 36vw, 70vw"
+										style={`view-transition-name: patch-${c.entry.id}`}
+									/>
+								</div>
+								<h3 class="display card-title">{c.mission}</h3>
+								<p class="mono card-meta">
+									{formatMonth(missionDate(c.entry.data))}
+									{c.entry.data.callsigns.csm && ` · ${c.entry.data.callsigns.csm}`}
+									{c.entry.data.callsigns.lm && ` / ${c.entry.data.callsigns.lm}`}
+									{!c.entry.data.launch && ' · Did not fly'}
+								</p>
+							</a>
+						</li>
+					) : (
+						<li class="card is-pending" data-number={c.number} data-hue={c.hue} data-callsign="~" style={`view-transition-name: card-${c.number}`}>
+							<div class="card-art">
+								<span class="pending-ring" aria-hidden="true">
+									{c.number}
+								</span>
+							</div>
+							<h3 class="display card-title">{c.mission}</h3>
+							<p class="mono card-meta">In preparation</p>
+						</li>
+					),
+				)
+			}
+		</ul>
+	</section>
+</Base>
+
+<script>
+	const grid = document.querySelector<HTMLElement>('[data-grid]')!;
+	const buttons = document.querySelectorAll<HTMLButtonElement>('[data-sort]');
+	const reduced = matchMedia('(prefers-reduced-motion: reduce)');
+
+	const num = (el: HTMLElement) => Number(el.dataset.number);
+	const pending = (el: HTMLElement) => Number(el.classList.contains('is-pending'));
+	const compare: Record<string, (a: HTMLElement, b: HTMLElement) => number> = {
+		number: (a, b) => num(a) - num(b),
+		hue: (a, b) => Number(a.dataset.hue) - Number(b.dataset.hue) || num(a) - num(b),
+		callsign: (a, b) => a.dataset.callsign!.localeCompare(b.dataset.callsign!) || num(a) - num(b),
+	};
+
+	const sortBy = (key: string) => {
+		const cards = [...grid.children] as HTMLElement[];
+		cards.sort((a, b) => pending(a) - pending(b) || compare[key](a, b)).forEach((card) => grid.append(card));
+		buttons.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.sort === key)));
+	};
+
+	buttons.forEach((button) =>
+		button.addEventListener('click', () => {
+			const key = button.dataset.sort!;
+			if (document.startViewTransition && !reduced.matches) document.startViewTransition(() => sortBy(key));
+			else sortBy(key);
+		}),
+	);
+</script>
+
+<style>
+	.masthead {
+		padding-top: var(--space-xl);
+	}
+
+	.masthead h1 {
+		margin: var(--space-s) 0 var(--space-m);
+		font-size: var(--step-5);
+	}
+
+	.masthead em {
+		font-style: italic;
+	}
+
+	.intro-row {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: space-between;
+		align-items: baseline;
+		gap: var(--space-s) var(--space-l);
+		padding-top: var(--space-s);
+	}
+
+	.intro {
+		max-width: 52ch;
+		font-size: var(--step-1);
+		line-height: 1.45;
+	}
+
+	.count {
+		color: var(--ink-2);
+	}
+
+	.block {
+		margin-top: var(--space-xl);
+	}
+
+	.grid-head {
+		display: flex;
+		justify-content: flex-end;
+		margin-bottom: var(--space-m);
+	}
+
+	.sort {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: var(--space-2xs);
+	}
+
+	.sort .label {
+		margin-right: var(--space-3xs);
+	}
+
+	.sort button {
+		padding: 3px 12px;
+		border: 1px solid var(--hair);
+		border-radius: 99px;
+		background: transparent;
+		color: var(--ink-2);
+		font: inherit;
+		font-size: var(--step--1);
+		cursor: pointer;
+		transition:
+			background-color 0.2s,
+			color 0.2s,
+			border-color 0.2s;
+	}
+
+	.sort button:hover {
+		border-color: var(--ink);
+		color: var(--ink);
+	}
+
+	.sort button[aria-pressed='true'] {
+		border-color: var(--ink);
+		background: var(--ink);
+		color: var(--paper);
+	}
+
+	.grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr));
+		gap: var(--space-xl) var(--space-l);
+		padding: 0;
+		margin: 0;
+	}
+
+	@media (max-width: 600px) {
+		.grid {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+			gap: var(--space-l) var(--space-s);
+		}
+
+		.card-title {
+			font-size: var(--step-2);
+		}
+	}
+
+	.card a {
+		display: block;
+		text-decoration: none;
+	}
+
+	.card-art {
+		display: grid;
+		place-items: center;
+		aspect-ratio: 1;
+		padding: 11%;
+		margin-bottom: var(--space-s);
+		background: var(--panel);
+		border: 1px solid var(--hair);
+		border-radius: var(--radius);
+	}
+
+	.card-art :global(img) {
+		width: 100%;
+		height: auto;
+		filter: var(--patch-shadow);
+		transition: transform 0.5s var(--ease);
+	}
+
+	.card a:hover .card-art :global(img),
+	.card a:focus-visible .card-art :global(img) {
+		transform: rotate(-6deg) translateY(-6px) scale(1.03);
+	}
+
+	.card-title {
+		font-size: var(--step-3);
+	}
+
+	.card-meta {
+		margin-top: var(--space-3xs);
+		color: var(--ink-2);
+		font-size: var(--step--2);
+	}
+
+	.pending-ring {
+		display: grid;
+		place-items: center;
+		width: 100%;
+		aspect-ratio: 1;
+		border: 1.5px dashed var(--ink-3);
+		border-radius: 50%;
+		font-family: var(--font-display);
+		font-size: var(--step-4);
+		font-style: italic;
+		color: var(--ink-3);
+	}
+
+	.is-pending .card-title {
+		color: var(--ink-3);
+	}
+</style>

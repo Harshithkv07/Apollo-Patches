@@ -1,0 +1,127 @@
+---
+import { hexToRgb, inkOn } from '../lib/format';
+
+interface Props {
+	colors: { name: string; hex: string; note?: string }[];
+}
+
+const { colors } = Astro.props;
+---
+
+<ul class="swatches" role="list">
+	{
+		colors.map((c) => {
+			const hex = c.hex.toUpperCase();
+			return (
+				<li class="swatch">
+					<button
+						class="chip"
+						type="button"
+						style={`--c: ${c.hex}; --on: ${inkOn(c.hex)}`}
+						data-copy={hex}
+						aria-label={`Copy ${c.name} ${hex}`}
+					>
+						<span class="chip-hint mono" aria-hidden="true">
+							Copy
+						</span>
+					</button>
+					<span class="swatch-name">{c.name}</span>
+					<span class="mono">{hex}</span>
+					<span class="mono dimmed">RGB {hexToRgb(c.hex).join(' ')}</span>
+					{c.note && <span class="swatch-note">{c.note}</span>}
+				</li>
+			);
+		})
+	}
+</ul>
+<p class="fine">
+	Hex values are sampled from the NASA scan and are approximations. Printed and embroidered patches vary from the
+	original art.
+</p>
+
+<script>
+	document.querySelectorAll<HTMLButtonElement>('.chip[data-copy]').forEach((chip) => {
+		const hint = chip.querySelector('.chip-hint')!;
+		chip.addEventListener('click', async () => {
+			try {
+				await navigator.clipboard.writeText(chip.dataset.copy!);
+				hint.textContent = 'Copied';
+			} catch {
+				hint.textContent = chip.dataset.copy!;
+			}
+			chip.classList.add('is-copied');
+			setTimeout(() => {
+				hint.textContent = 'Copy';
+				chip.classList.remove('is-copied');
+			}, 1400);
+		});
+	});
+</script>
+
+<style>
+	.swatches {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(min(100%, 132px), 1fr));
+		gap: var(--space-m) var(--space-s);
+		padding: 0;
+		margin: 0;
+	}
+
+	.swatch {
+		display: grid;
+		gap: 2px;
+		align-content: start;
+	}
+
+	.chip {
+		position: relative;
+		display: grid;
+		place-items: end start;
+		aspect-ratio: 4 / 3;
+		margin-bottom: var(--space-2xs);
+		padding: var(--space-2xs);
+		border: 1px solid color-mix(in oklab, var(--c) 82%, var(--ink));
+		border-radius: var(--radius);
+		background: var(--c);
+		color: var(--on);
+		cursor: copy;
+		transition: transform 0.25s var(--ease);
+	}
+
+	.chip:hover {
+		transform: translateY(-2px);
+	}
+
+	.chip-hint {
+		font-size: var(--step--2);
+		opacity: 0;
+		transition: opacity 0.2s;
+	}
+
+	.chip:hover .chip-hint,
+	.chip:focus-visible .chip-hint,
+	.chip.is-copied .chip-hint {
+		opacity: 1;
+	}
+
+	.swatch-name {
+		font-weight: 500;
+		font-size: var(--step--1);
+	}
+
+	.dimmed {
+		color: var(--ink-3);
+	}
+
+	.swatch-note {
+		font-size: var(--step--1);
+		color: var(--ink-2);
+	}
+
+	.fine {
+		margin-top: var(--space-m);
+		max-width: var(--measure);
+		font-size: var(--step--1);
+		color: var(--ink-2);
+	}
+</style>

@@ -1,0 +1,478 @@
+---
+import { getImage } from 'astro:assets';
+import type { CollectionEntry } from 'astro:content';
+import { arcPath, inD, outlinePath, pathExtent, polar } from '../lib/geometry';
+
+interface Props {
+	entry: CollectionEntry<'missions'>;
+}
+
+const { entry } = Astro.props;
+const { construction, patch, mission, shape, outline } = entry.data;
+const slug = entry.id;
+const isCircle = shape === 'circle';
+// Overall extent of the patch in the 1000-unit box. D is the longer side.
+const ext = isCircle ? { x0: 0, y0: 0, x1: 1000, y1: 1000 } : pathExtent(outline!);
+const W = ext.x1 - ext.x0;
+const H = ext.y1 - ext.y0;
+const dimLabel = (units: number) => (Math.abs(units - Math.max(W, H)) < 2 ? 'D' : `${inD(units)} D`);
+const ghost = await getImage({ src: patch, width: 800, format: 'webp' });
+
+const r1 = (n: number) => Math.round(n * 10) / 10;
+const signed = (units: number, neg: string, pos: string) =>
+	Math.abs(units) < 5 ? 'on center' : `${inD(Math.abs(units))} D ${units < 0 ? neg : pos}`;
+/** Where a point sits relative to the patch center, e.g. "0.030 D right, 0.105 D up". */
+const offset = (x: number, y: number) => {
+	const parts = [];
+	if (Math.abs(x - 500) >= 5) parts.push(`${inD(Math.abs(x - 500))} D ${x < 500 ? 'left' : 'right'}`);
+	if (Math.abs(y - 500) >= 5) parts.push(`${inD(Math.abs(y - 500))} D ${y < 500 ? 'up' : 'down'}`);
+	return parts.length ? parts.join(', ') : 'on center';
+};
+const pitch = (values: number[]) => {
+	const sorted = [...values].sort((a, b) => a - b);
+	const gaps = sorted.slice(1).map((v, i) => v - sorted[i]);
+	return gaps.reduce((a, b) => a + b, 0) / gaps.length;
+};
+
+type Callout = { n: number; x: number; y: number; title: string; detail: string; leader?: string };
+const callouts: Callout[] = [];
+
+// Concentric bands: leaders fan out from the rim to a column of badges.
+const boundaries = [...new Set(construction.bands.flatMap((b) => [b.outer, b.inner]))];
+construction.bands.forEach((band, i) => {
+	const mid = ((band.outer + band.inner) / 2) * 500;
+	const start = polar(mid, -46 + i * 8);
+	const y = 70 + i * 74;
+	callouts.push({
+		n: callouts.length + 1,
+		x: 1100,
+		y,
+		title: band.name,
+		detail: `Ø ${band.outer.toFixed(3)} → ${band.inner.toFixed(3)} D · width ${((band.outer - band.inner) / 2).toFixed(3)} D`,
+		leader: `M${r1(start.x)},${r1(start.y)}L1044,${y}L1072,${y}`,
+	});
+});
+
+// Features: badge placement depends on the kind of mark.
+for (const f of construction.features) {
+	const n = callouts.length + 1;
+	if (f.kind === 'circle') {
+		let p = { x: f.cx + f.r * 0.72 + 30, y: f.cy - f.r * 0.72 - 30 };
+		if (Math.hypot(p.x - 500, p.y - 500) > 520) {
+			// Circle mostly outside the patch (e.g. a planet's rim): badge on the
+			// point of the circle nearest the patch center.
+			const dx = 500 - f.cx;
+			const dy = 500 - f.cy;
+			const len = Math.hypot(dx, dy);
+			p = { x: f.cx + (dx / len) * (f.r + 40), y: f.cy + (dy / len) * (f.r + 40) };
+		}
+		callouts.push({
+			n,
+			...p,
+			title: f.label,
+			detail: `Ø ${inD(f.r * 2)} D · center ${offset(f.cx, f.cy)}`,
+		});
+	} else if (f.kind === 'ellipse') {
+		const p = polar(Math.max(f.rx, f.ry) * 0.72 + 34, -40 + f.rotate, f.cx, f.cy);
+		callouts.push({
+			n,
+			...p,
+			title: f.label,
+			detail: `${inD(f.rx * 2)} × ${inD(f.ry * 2)} D${f.rotate ? ` · tilted ${Math.abs(f.rotate)}°` : ''} · center ${offset(f.cx, f.cy)}`,
+		});
+	} else if (f.kind === 'line') {
+		const [x1, y1, x2, y2] = f.segments[0];
+		const horizontal = f.segments.every((s) => Math.abs(s[3] - s[1]) < 3);
+		const len = Math.hypot(x2 - x1, y2 - y1);
+		// Angle from vertical, 0–90°.
+		const tilt = Math.round(Math.abs((Math.atan2(x2 - x1, y2 - y1) * 180) / Math.PI) % 180);
+		const fromVertical = tilt > 90 ? 180 - tilt : tilt;
+		const ys = f.segments.map((s) => (s[1] + s[3]) / 2);
+		callouts.push({
+			n,
+			x: Math.max(x1, x2) + 34,
+			y: x2 >= x1 ? y2 : y1,
+			title: f.label,
+			detail: horizontal
+				? f.segments.length > 1
+					? `${f.segments.length} lines · pitch ${inD(pitch(ys))} D`
+					: `${signed(y1 - 500, 'above', 'below')} center · length ${inD(len)} D`
+				: `${f.segments.length > 1 ? `${f.segments.length} lines · ` : ''}${fromVertical}° from vertical · length ${inD(len)} D`,
+		});
+	} else if (f.kind === 'arc') {
+		const out = f.r + (f.capToward === 'rim' ? (f.cap ?? 0) : 0) + 34;
+		// Badge at the middle of the arc, unless that lands on the width
+		// dimension under the patch; then use the arc's end instead.
+		const mid = polar(out, (f.from + f.to) / 2, f.cx, f.cy);
+		const offCenter = Math.hypot(f.cx - 500, f.cy - 500) > 5;
+		callouts.push({
+			n,
+			...(mid.y > ext.y1 - 40 ? polar(out, f.to, f.cx, f.cy) : mid),
+			title: f.label,
+			detail: `radius ${inD(f.r)} D${offCenter ? ` around a point ${offset(f.cx, f.cy)}` : ''} · spans ${Math.abs(f.to - f.from)}°${f.cap ? ` · cap height ${inD(f.cap)} D` : ''}`,
+		});
+	} else {
+		// Points: say how they're arranged — on a circle around the center,
+		// evenly spaced, or neither.
+		const pts = f.points;
+		const gaps = pts.slice(1).map((p, i) => Math.hypot(p[0] - pts[i][0], p[1] - pts[i][1]));
+		const mean = (a: number[]) => a.reduce((s, v) => s + v, 0) / a.length;
+		const spread = (a: number[]) => Math.sqrt(mean(a.map((v) => (v - mean(a)) ** 2))) / mean(a);
+		const radii = pts.map((p) => Math.hypot(p[0] - 500, p[1] - 500));
+		const angles = pts.map((p) => (Math.atan2(p[1] - 500, p[0] - 500) * 180) / Math.PI);
+		const steps = angles.slice(1).map((a, i) => {
+			const d = Math.abs(a - angles[i]);
+			return d > 180 ? 360 - d : d;
+		});
+		let detail = `${pts.length} points`;
+		if (pts.length > 2 && spread(radii) < 0.02)
+			detail += ` on a circle Ø ${inD(mean(radii) * 2)} D · about ${Math.round(mean(steps.filter((s) => s < 40)))}° apart`;
+		else if (pts.length > 1 && spread(gaps) < 0.15) detail += ` · spacing ${inD(mean(gaps))} D`;
+		callouts.push({ n, x: pts[0][0] - 44, y: pts[0][1] - 44, title: f.label, detail });
+	}
+}
+
+const arrow = `arrow-${slug}`;
+let delay = 0;
+const next = () => `--delay: ${(delay++ * 0.09).toFixed(2)}s`;
+---
+
+<div class="sheet" data-sheet>
+	<svg
+		class="sheet-svg"
+		viewBox="-130 -60 1300 1180"
+		role="img"
+		aria-labelledby={`sheet-title-${slug}`}
+	>
+		<title id={`sheet-title-${slug}`}>Construction sheet for the {mission} emblem, with numbered measurements listed alongside.</title>
+		<defs>
+			<marker id={arrow} viewBox="0 0 10 10" refX="10" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+				<path d="M0,1L10,5L0,9" fill="none" stroke="context-stroke" stroke-width="1.4"></path>
+			</marker>
+			<clipPath id={`sheet-clip-${slug}`}><path d={outlinePath(entry.data)}></path></clipPath>
+		</defs>
+
+		<image class="ghost" href={ghost.src} x="0" y="0" width="1000" height="1000"></image>
+
+		<!-- center lines -->
+		<g class="axis">
+			<line x1="-40" y1="500" x2="1040" y2="500"></line>
+			<line x1="500" y1="-40" x2="500" y2="1040"></line>
+		</g>
+
+		<!-- silhouette (non-circular patches) -->
+		{!isCircle && <path class="draw ring ring-outer" d={outline} pathLength="1" style={next()} />}
+
+		<!-- bands -->
+		{
+			boundaries.map((b, i) => (
+				<circle class:list={['draw ring', { 'ring-outer': i === 0 }]} cx="500" cy="500" r={b * 500} pathLength="1" style={next()} />
+			))
+		}
+
+		<!-- features -->
+		<g clip-path={`url(#sheet-clip-${slug})`}>
+			{
+				construction.features.map((f) => {
+					if (f.kind === 'circle')
+						return (
+							<g>
+								<circle class="draw mark" cx={f.cx} cy={f.cy} r={f.r} pathLength="1" style={next()} />
+								<path class="tick" d={`M${f.cx - 12},${f.cy}h24M${f.cx},${f.cy - 12}v24`} />
+							</g>
+						);
+					if (f.kind === 'line')
+						return f.segments.map(([x1, y1, x2, y2]) => (
+							<line class="draw mark" x1={x1} y1={y1} x2={x2} y2={y2} pathLength="1" style={next()} />
+						));
+					if (f.kind === 'ellipse')
+						return (
+							<g transform={`rotate(${f.rotate} ${f.cx} ${f.cy})`}>
+								<ellipse class="draw mark" cx={f.cx} cy={f.cy} rx={f.rx} ry={f.ry} pathLength="1" style={next()} />
+								<path class="tick" d={`M${f.cx - 12},${f.cy}h24M${f.cx},${f.cy - 12}v24`} />
+							</g>
+						);
+					if (f.kind === 'arc') {
+						const capR = f.cap ? f.r + (f.capToward === 'rim' ? f.cap : -f.cap) : null;
+						return (
+							<g>
+								<path class="draw mark" d={arcPath(f.r, f.from, f.to, f.cx, f.cy)} pathLength="1" style={next()} />
+								{capR && <path class="guide" d={arcPath(capR, f.from, f.to, f.cx, f.cy)} />}
+							</g>
+						);
+					}
+					return f.points.map(([x, y]) => (
+						<g>
+							<circle class="draw mark" cx={x} cy={y} r="14" pathLength="1" style={next()} />
+							<path class="tick" d={`M${x - 24},${y}h48M${x},${y - 24}v48`} />
+						</g>
+					));
+				})
+			}
+		</g>
+
+		<!-- overall width (and height, for patches that aren't circles) -->
+		<g class="dim-line">
+			<line class="ext" x1={r1(ext.x0)} y1={r1(ext.y1 - 480 * (H / 1000))} x2={r1(ext.x0)} y2={r1(ext.y1 + 82)}></line>
+			<line class="ext" x1={r1(ext.x1)} y1={r1(ext.y1 - 480 * (H / 1000))} x2={r1(ext.x1)} y2={r1(ext.y1 + 82)}></line>
+			<line x1={r1(ext.x0 + 4)} y1={r1(ext.y1 + 62)} x2={r1(ext.x1 - 4)} y2={r1(ext.y1 + 62)} marker-start={`url(#${arrow})`} marker-end={`url(#${arrow})`}></line>
+			<rect x={r1((ext.x0 + ext.x1) / 2 - 70)} y={r1(ext.y1 + 38)} width="140" height="48" class="dim-label-bg"></rect>
+			<text x={r1((ext.x0 + ext.x1) / 2)} y={r1(ext.y1 + 72)} text-anchor="middle" class="dim-label">{dimLabel(W)}</text>
+			{
+				!isCircle && (
+					<>
+						<line class="ext" x1={r1(ext.x0 - 102)} y1={r1(ext.y0)} x2={r1(ext.x0 + 480 * (W / 1000))} y2={r1(ext.y0)} />
+						<line class="ext" x1={r1(ext.x0 - 102)} y1={r1(ext.y1)} x2={r1(ext.x0 + 480 * (W / 1000))} y2={r1(ext.y1)} />
+						<line x1={r1(ext.x0 - 82)} y1={r1(ext.y0 + 4)} x2={r1(ext.x0 - 82)} y2={r1(ext.y1 - 4)} marker-start={`url(#${arrow})`} marker-end={`url(#${arrow})`} />
+						<g transform={`translate(${r1(ext.x0 - 82)} ${r1((ext.y0 + ext.y1) / 2)}) rotate(-90)`}>
+							<rect x="-70" y="-24" width="140" height="48" class="dim-label-bg" />
+							<text x="0" y="12" text-anchor="middle" class="dim-label">{dimLabel(H)}</text>
+						</g>
+					</>
+				)
+			}
+		</g>
+
+		<!-- callouts -->
+		{
+			callouts.map((c) => (
+				<g class="callout">
+					{c.leader && <path class="leader" d={c.leader} />}
+					<circle cx={r1(c.x)} cy={r1(c.y)} r="27" />
+					<text x={r1(c.x)} y={r1(c.y) + 11} text-anchor="middle">
+						{c.n}
+					</text>
+				</g>
+			))
+		}
+	</svg>
+
+	<div class="sheet-legend">
+		<p class="label">{isCircle ? 'Measurements in D, the patch diameter' : 'Measurements in D, the patch’s longest side'}</p>
+		{!isCircle && <p class="mono overall">Overall {inD(W)} D wide × {inD(H)} D tall</p>}
+		<ol role="list">
+			{
+				callouts.map((c) => (
+					<li>
+						<span class="badge mono" aria-hidden="true">
+							{c.n}
+						</span>
+						<span>
+							<span class="legend-title">{c.title}</span>
+							<span class="mono legend-detail">{c.detail}</span>
+						</span>
+					</li>
+				))
+			}
+		</ol>
+		{
+			construction.notes.length > 0 && (
+				<ul class="sheet-notes" role="list">
+					{construction.notes.map((note) => (
+						<li>{note}</li>
+					))}
+				</ul>
+			)
+		}
+		<p class="fine">
+			No official construction spec for this emblem turned up in research, so every value here is measured from the NASA
+			scan and approximate.
+		</p>
+	</div>
+</div>
+
+<script>
+	const sheets = document.querySelectorAll<HTMLElement>('[data-sheet]');
+	const io = new IntersectionObserver(
+		(entries) => {
+			for (const e of entries) {
+				if (!e.isIntersecting) continue;
+				e.target.classList.add('is-drawn');
+				io.unobserve(e.target);
+			}
+		},
+		{ threshold: 0.25 },
+	);
+	sheets.forEach((s) => io.observe(s));
+</script>
+
+<style>
+	.sheet {
+		display: grid;
+		gap: var(--space-l);
+	}
+
+	.sheet-svg {
+		width: 100%;
+		height: auto;
+		overflow: visible;
+		font-family: var(--font-mono);
+	}
+
+	.ghost {
+		opacity: 0.18;
+		filter: grayscale(1);
+	}
+
+	.axis line {
+		stroke: var(--ink-3);
+		stroke-width: 1.5;
+		stroke-dasharray: 26 8 4 8;
+	}
+
+	.ring,
+	.mark {
+		fill: none;
+		stroke: var(--signal);
+		stroke-width: 2.5;
+	}
+
+	.ring-outer {
+		stroke-width: 4;
+	}
+
+	.guide {
+		fill: none;
+		stroke: var(--signal);
+		stroke-width: 1.5;
+		stroke-dasharray: 6 8;
+		opacity: 0.75;
+	}
+
+	.tick {
+		stroke: var(--signal);
+		stroke-width: 2;
+	}
+
+	.dim-line line {
+		stroke: var(--ink);
+		stroke-width: 2;
+	}
+
+	.dim-line .ext {
+		stroke: var(--ink-3);
+		stroke-width: 1.5;
+	}
+
+	.dim-label-bg {
+		fill: var(--paper);
+	}
+
+	.dim-label {
+		font-family: var(--font-display);
+		font-style: italic;
+		font-size: 44px;
+		fill: var(--ink);
+	}
+
+	.callout circle {
+		fill: var(--paper);
+		stroke: var(--ink);
+		stroke-width: 2;
+	}
+
+	.callout text {
+		font-size: 32px;
+		font-weight: 500;
+		fill: var(--ink);
+	}
+
+	.leader {
+		fill: none;
+		stroke: var(--ink-3);
+		stroke-width: 1.5;
+	}
+
+	/* Draw-in: strokes trace themselves once the sheet scrolls into view. */
+	:global(.js) .draw {
+		stroke-dasharray: 1;
+		stroke-dashoffset: 1;
+		transition: stroke-dashoffset 1.4s var(--ease) var(--delay, 0s);
+	}
+
+	:global(.js) .is-drawn .draw {
+		stroke-dashoffset: 0;
+	}
+
+	:global(.js) .sheet-svg :is(.axis, .guide, .tick, .callout, .leader, .dim-line) {
+		opacity: 0;
+		transition: opacity 0.6s ease 0.5s;
+	}
+
+	:global(.js) .is-drawn .sheet-svg :is(.axis, .tick, .callout, .leader, .dim-line) {
+		opacity: 1;
+	}
+
+	:global(.js) .is-drawn .sheet-svg .guide {
+		opacity: 0.75;
+	}
+
+	.overall {
+		margin-top: var(--space-2xs);
+		font-size: var(--step--2);
+		color: var(--ink-2);
+	}
+
+	.sheet-legend ol {
+		display: grid;
+		gap: var(--space-xs);
+		padding: 0;
+		margin: var(--space-xs) 0 0;
+	}
+
+	.sheet-legend li {
+		display: grid;
+		grid-template-columns: 1.9rem 1fr;
+		gap: var(--space-xs);
+		align-items: start;
+	}
+
+	.badge {
+		display: grid;
+		place-items: center;
+		width: 1.6rem;
+		height: 1.6rem;
+		border: 1px solid var(--ink);
+		border-radius: 50%;
+		font-size: var(--step--2);
+	}
+
+	.legend-title {
+		display: block;
+		font-weight: 500;
+	}
+
+	.legend-detail {
+		display: block;
+		color: var(--ink-2);
+		font-size: var(--step--2);
+	}
+
+	.sheet-notes {
+		display: grid;
+		gap: var(--space-2xs);
+		margin: var(--space-m) 0 0;
+		padding: var(--space-s) 0 0;
+		border-top: 1px solid var(--hair);
+		list-style: none;
+		font-size: var(--step--1);
+	}
+
+	.sheet-notes li::before {
+		content: '— ';
+		color: var(--ink-3);
+	}
+
+	.fine {
+		margin-top: var(--space-m);
+		font-size: var(--step--1);
+		color: var(--ink-2);
+	}
+
+	@media (min-width: 720px) {
+		.sheet {
+			grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+			align-items: start;
+		}
+	}
+</style>

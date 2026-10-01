@@ -1,0 +1,314 @@
+---
+import { Image } from 'astro:assets';
+import type { CollectionEntry } from 'astro:content';
+import { hotspotExtent, hotspotPath, outlinePath } from '../lib/geometry';
+
+interface Props {
+	entry: CollectionEntry<'missions'>;
+}
+
+const { entry } = Astro.props;
+const { data } = entry;
+const slug = entry.id;
+
+// Traced symbol art is used as a CSS mask, so it inherits the ink color and
+// stays out of the HTML (some traces are a few hundred KB).
+const icons = import.meta.glob<string>('/src/assets/icons/**/*.svg', { query: '?url', import: 'default', eager: true });
+const iconUrl = (id: string) => icons[`/src/assets/icons/${slug}/${id}.svg`];
+
+const symbols = data.iconography.map((s) => ({ ...s, d: hotspotPath(s.hotspot) }));
+
+// Hit areas overlap (the Moon behind the horses), so paint big ones first and
+// let smaller symbols sit on top where the pointer can reach them.
+const size = (s: (typeof symbols)[number]) => {
+	const h = s.hotspot;
+	if ('circle' in h) return Math.PI * h.circle[2] ** 2;
+	if ('ring' in h) return Math.PI * (h.ring[2] ** 2 - h.ring[3] ** 2);
+	if ('ellipse' in h) return Math.PI * h.ellipse[2] * h.ellipse[3];
+	const e = hotspotExtent(h);
+	return (e.x1 - e.x0) * (e.y1 - e.y0);
+};
+const hitOrder = [...symbols].sort((a, b) => size(b) - size(a));
+const maskId = `dim-${slug}`;
+const clipId = `clip-${slug}`;
+---
+
+<div class="ico" data-iconography>
+	<figure class="ico-figure">
+		<div class="ico-stage">
+			<Image
+				src={data.patch}
+				alt={data.patchAlt}
+				width={840}
+				widths={[360, 560, 840]}
+				sizes="(min-width: 960px) 26vw, 44vw"
+				loading="lazy"
+			/>
+			<svg class="ico-overlay" viewBox="0 0 1000 1000" aria-hidden="true">
+				<defs>
+					<clipPath id={clipId}><path d={outlinePath(data)}></path></clipPath>
+					<mask id={maskId} maskUnits="userSpaceOnUse" x="0" y="0" width="1000" height="1000">
+						<rect width="1000" height="1000" fill="#fff"></rect>
+						{symbols.map((s) => <path class="cut" data-symbol={s.id} d={s.d} />)}
+					</mask>
+				</defs>
+				<g clip-path={`url(#${clipId})`}>
+					<rect class="dim" width="1000" height="1000" mask={`url(#${maskId})`}></rect>
+					{symbols.map((s) => <path class="outline" data-symbol={s.id} d={s.d} pathLength="1" />)}
+					{hitOrder.map((s) => <path class="hit" data-symbol={s.id} d={s.d} />)}
+				</g>
+			</svg>
+		</div>
+		<figcaption class="ico-caption" aria-live="polite">
+			<span class="label">Symbol</span>
+			<span class="ico-caption-text" data-caption data-default="Point at a symbol">Point at a symbol</span>
+		</figcaption>
+	</figure>
+
+	<ul class="ico-list" role="list">
+		{
+			symbols.map((s) => (
+				<li class="ico-item" data-symbol={s.id} tabindex="0">
+					{iconUrl(s.id) && <span class="ico-art" style={`--icon: url("${iconUrl(s.id)}")`} aria-hidden="true" />}
+					<h3 class="ico-name">{s.symbol}</h3>
+					<p class="label">Denotes</p>
+					<p class="ico-denotes">{s.denotes}</p>
+					{s.note && <p class="ico-note">{s.note}</p>}
+				</li>
+			))
+		}
+	</ul>
+</div>
+
+<script>
+	for (const root of document.querySelectorAll<HTMLElement>('[data-iconography]')) {
+		const figure = root.querySelector('.ico-figure')!;
+		const caption = root.querySelector<HTMLElement>('[data-caption]')!;
+		const card = (id: string) => root.querySelector<HTMLElement>(`.ico-item[data-symbol="${id}"]`);
+		let active: string | null = null;
+
+		const set = (id: string | null) => {
+			if (id === active) return;
+			if (active) root.querySelectorAll(`[data-symbol="${active}"]`).forEach((el) => el.classList.remove('is-active'));
+			active = id;
+			if (id) root.querySelectorAll(`[data-symbol="${id}"]`).forEach((el) => el.classList.add('is-active'));
+			figure.classList.toggle('has-active', Boolean(id));
+			caption.textContent = id ? (card(id)?.querySelector('.ico-name')?.textContent ?? '') : caption.dataset.default!;
+		};
+
+		// Touch fires pointerleave right after a tap, so only a mouse clears on leave;
+		// taps select through click (and stay selected until the next tap).
+		const isMouse = (e: PointerEvent) => e.pointerType === 'mouse';
+
+		root.querySelectorAll<HTMLElement>('.ico-item').forEach((item) => {
+			const id = item.dataset.symbol!;
+			item.addEventListener('pointerenter', (e) => isMouse(e) && set(id));
+			item.addEventListener('pointerleave', (e) => {
+				if (isMouse(e) && document.activeElement !== item) set(null);
+			});
+			item.addEventListener('click', () => set(id));
+			item.addEventListener('focus', () => set(id));
+			item.addEventListener('blur', () => set(null));
+		});
+
+		root.querySelectorAll<SVGPathElement>('.hit').forEach((hit) => {
+			const id = hit.dataset.symbol!;
+			hit.addEventListener('pointerenter', (e) => isMouse(e) && set(id));
+			hit.addEventListener('pointerleave', (e) => isMouse(e) && set(null));
+			// A tap on the patch selects the matching card without scrolling to it.
+			hit.addEventListener('click', () => {
+				set(id);
+				card(id)?.focus({ preventScroll: true });
+			});
+		});
+	}
+</script>
+
+<style>
+	.ico {
+		display: grid;
+		gap: var(--space-l);
+	}
+
+	.ico-figure {
+		position: sticky;
+		top: 0;
+		z-index: 2;
+		display: grid;
+		justify-items: center;
+		gap: var(--space-2xs);
+		padding-block: var(--space-xs);
+		/* frosted so the stars blur behind the pinned patch on small screens */
+		background: color-mix(in oklab, var(--paper) 78%, transparent);
+		-webkit-backdrop-filter: blur(10px);
+		backdrop-filter: blur(10px);
+	}
+
+	.ico-stage {
+		position: relative;
+		width: min(44vw, 260px);
+		aspect-ratio: 1;
+		filter: var(--patch-shadow);
+	}
+
+	.ico-stage :global(img) {
+		width: 100%;
+		height: 100%;
+	}
+
+	.ico-overlay {
+		position: absolute;
+		inset: 0;
+		width: 100%;
+		height: 100%;
+		overflow: visible;
+	}
+
+	.cut,
+	.outline,
+	.hit {
+		fill-rule: evenodd;
+	}
+
+	.cut {
+		fill: #fff;
+	}
+
+	.cut.is-active {
+		fill: #000;
+	}
+
+	.dim {
+		fill: var(--dim);
+		opacity: 0;
+		transition: opacity 0.35s var(--ease);
+	}
+
+	.has-active .dim {
+		opacity: 1;
+	}
+
+	.outline {
+		fill: none;
+		stroke: var(--signal);
+		stroke-width: 4;
+		stroke-linejoin: round;
+		stroke-dasharray: 0.012 0.008;
+		opacity: 0;
+		transition: opacity 0.25s;
+	}
+
+	.outline.is-active {
+		opacity: 1;
+		animation: march 12s linear infinite;
+	}
+
+	@keyframes march {
+		to {
+			stroke-dashoffset: -1;
+		}
+	}
+
+	.hit {
+		fill: transparent;
+		pointer-events: all;
+		cursor: crosshair;
+	}
+
+	.ico-caption {
+		display: flex;
+		align-items: baseline;
+		gap: var(--space-2xs);
+		min-height: 1.6em;
+		font-size: var(--step--1);
+	}
+
+	.ico-caption-text {
+		font-family: var(--font-display);
+		font-size: var(--step-1);
+		font-style: italic;
+	}
+
+	.ico-list {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr));
+		gap: var(--space-m) var(--space-m);
+		padding: 0;
+		margin: 0;
+	}
+
+	.ico-item {
+		display: grid;
+		align-content: start;
+		gap: var(--space-3xs);
+		padding: var(--space-s) 0 var(--space-xs);
+		border-top: 1px solid var(--hair);
+		outline-offset: 6px;
+		cursor: default;
+		transition: border-color 0.25s;
+	}
+
+	.ico-item.is-active {
+		border-top-color: var(--signal);
+	}
+
+	.ico-art {
+		display: block;
+		height: 112px;
+		margin-bottom: var(--space-xs);
+		background: var(--ink);
+		-webkit-mask: var(--icon) left bottom / contain no-repeat;
+		mask: var(--icon) left bottom / contain no-repeat;
+		transition: background-color 0.25s;
+	}
+
+	.ico-item.is-active .ico-art {
+		background: var(--signal);
+	}
+
+	.ico-name {
+		font-family: var(--font-display);
+		font-size: var(--step-2);
+		font-weight: 400;
+		line-height: 1.1;
+	}
+
+	.ico-name + .label {
+		margin-top: var(--space-2xs);
+		padding-top: var(--space-2xs);
+		border-top: 1px solid var(--hair);
+	}
+
+	.ico-denotes {
+		font-weight: 500;
+	}
+
+	.ico-note {
+		font-size: var(--step--1);
+		color: var(--ink-2);
+	}
+
+	@media (min-width: 960px) {
+		.ico {
+			grid-template-columns: minmax(0, 4fr) minmax(0, 5fr);
+			align-items: start;
+		}
+
+		.ico-figure {
+			top: var(--space-m);
+			justify-items: start;
+			padding: 0;
+			background: none;
+			-webkit-backdrop-filter: none;
+			backdrop-filter: none;
+		}
+
+		.ico-stage {
+			width: 100%;
+		}
+
+		.ico-list {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+		}
+	}
+</style>

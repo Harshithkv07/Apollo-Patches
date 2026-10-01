@@ -1,0 +1,74 @@
+---
+import Base from '../layouts/Base.astro';
+
+const terms = [
+	{ term: 'Baseline', def: 'The line lettering sits on. On a patch it is usually an arc concentric with the rim.' },
+	{ term: 'Call sign', def: 'The name a spacecraft answered to on the radio, such as Columbia or Eagle. Crews chose their own.' },
+	{ term: 'Cap height', def: 'The height of a capital letter above its baseline.' },
+	{ term: 'CMP', def: 'Command Module Pilot. The crew member who stayed in lunar orbit while the others went down to the surface.' },
+	{ term: 'CSM', def: 'Command and Service Module. The crew’s mothership: the capsule they rode home in, plus the service module that powered it.' },
+	{ term: 'D', def: 'The patch diameter. Every construction measurement on this site is a fraction of D.' },
+	{ term: 'Emblem', def: 'The mission’s official design. Here it is used interchangeably with insignia and patch.' },
+	{ term: 'Field', def: 'The main background area inside a patch’s borders.' },
+	{ term: 'Keyline', def: 'A thin ring that separates two areas of color.' },
+	{ term: 'LM', def: 'Lunar Module. The two-stage lander that took two astronauts down to the surface and back up to the CSM.' },
+	{ term: 'LMP', def: 'Lunar Module Pilot. The second crew member to go down to the surface, alongside the commander.' },
+	{ term: 'Motto', def: 'A phrase stitched into the design, like Apollo 13’s Ex Luna, Scientia.' },
+	{ term: 'Splashdown', def: 'The end of a mission: the command module landing under parachutes in the ocean.' },
+];
+---
+
+<Base title="Glossary" description="Terms used across this design guide to the Apollo crew emblems.">
+	<header class="wrap page-head">
+		<p class="label">Glossary</p>
+		<h1 class="display">Terms of <em>art</em></h1>
+		<hr class="rule" />
+	</header>
+
+	<dl class="wrap terms">
+		{
+			terms.map((t) => (
+				<div class="term" id={t.term.toLowerCase().replace(/\s+/g, '-')}>
+					<dt class="display">{t.term}</dt>
+					<dd>{t.def}</dd>
+				</div>
+			))
+		}
+	</dl>
+</Base>
+
+<style>
+	.page-head {
+		padding-top: var(--space-xl);
+	}
+
+	.page-head h1 {
+		margin: var(--space-s) 0 var(--space-m);
+		font-size: var(--step-5);
+	}
+
+	.page-head em {
+		font-style: italic;
+	}
+
+	.terms {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
+		gap: 0 var(--space-l);
+		margin-top: var(--space-l);
+	}
+
+	.term {
+		padding-block: var(--space-s);
+		border-bottom: 1px solid var(--hair);
+	}
+
+	.term dt {
+		font-size: var(--step-2);
+	}
+
+	.term dd {
+		margin-top: var(--space-3xs);
+		color: var(--ink-2);
+	}
+</style>

@@ -1,0 +1,6 @@
+# Vercel installs and builds from source; keep local-only files out of the upload.
+node_modules
+dist
+.astro
+# original NASA scans (large, and only needed by scripts/prepare-patch.mjs)
+source-scans
